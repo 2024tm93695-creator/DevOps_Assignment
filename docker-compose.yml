@@ -23,6 +23,8 @@ services:
       context: ./ui_app
       dockerfile: Dockerfile
     container_name: aceest-fitness-ui
+    ports:
+      - "6080:6080"
     environment:
       API_BASE_URL: http://flask-app:5000
     depends_on:

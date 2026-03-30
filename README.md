@@ -187,3 +187,14 @@ docker-compose -f docker-compose.jenkins.yml down
 # To also remove all data (full reset):
 docker-compose -f docker-compose.jenkins.yml down -v
 ```
+ APP running : http://localhost:6080/vnc.html
+
+ 
+Field	Value
+Username	(leave blank — VNC only needs a password)
+Password	password
+
+
+Field	Value
+Username	admin
+Password	admin

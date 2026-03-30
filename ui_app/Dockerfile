@@ -14,6 +14,10 @@ RUN apt-get update \
        supervisor \
        curl \
        python3-setuptools \
+       x11-xserver-utils \
+       xfonts-base \
+       adwaita-icon-theme \
+       x11-apps \
     && rm -rf /var/lib/apt/lists/*
 
 # Set up VNC

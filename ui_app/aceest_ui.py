@@ -17,6 +17,24 @@ class ACEestUIApp:
         self.root.geometry("1400x900")
         self.root.configure(bg="#1a1a1a")
 
+        # Apply dark style to all ttk.Treeview widgets globally
+        style = ttk.Style()
+        style.theme_use("clam")
+        style.configure("Treeview",
+                        background="#2a2a2a",
+                        foreground="white",
+                        rowheight=25,
+                        fieldbackground="#2a2a2a",
+                        bordercolor="#444",
+                        borderwidth=0)
+        style.configure("Treeview.Heading",
+                        background="#333",
+                        foreground="#d4af37",
+                        relief="flat")
+        style.map("Treeview",
+                  background=[("selected", "#d4af37")],
+                  foreground=[("selected", "black")])
+
         self.current_client = None
         self.current_user = None
 
@@ -406,6 +424,7 @@ Recent Workouts: {len(summary['recent_workouts'])} sessions"""
                 update_exercises_list()
 
             ttk.Button(exercise_win, text="Save Exercise", command=save_exercise).pack(pady=10)
+            ttk.Button(exercise_win, text="Close", command=exercise_win.destroy).pack(pady=2)
 
         ttk.Button(exercises_frame, text="Add Exercise", command=add_exercise).pack(pady=5)
 
@@ -440,7 +459,10 @@ Recent Workouts: {len(summary['recent_workouts'])} sessions"""
             except Exception as e:
                 messagebox.showerror("Error", f"Failed to save workout: {str(e)}")
 
-        ttk.Button(win, text="Save Workout", command=save_workout).pack(pady=10)
+        btn_frame = tk.Frame(win, bg="#1a1a1a")
+        btn_frame.pack(pady=10)
+        ttk.Button(btn_frame, text="Save Workout", command=save_workout).pack(side="left", padx=5)
+        ttk.Button(btn_frame, text="Close", command=win.destroy).pack(side="left", padx=5)
 
     # ---------- ANALYTICS TAB ----------
     def setup_analytics_tab(self):
@@ -542,7 +564,10 @@ BMI Categories:
             messagebox.showinfo("Info", "Metrics logging would be implemented with API endpoint")
             win.destroy()
 
-        ttk.Button(win, text="Save Metrics", command=save_metrics).pack(pady=10)
+        btn_frame = tk.Frame(win, bg="#1a1a1a")
+        btn_frame.pack(pady=10)
+        ttk.Button(btn_frame, text="Save Metrics", command=save_metrics).pack(side="left", padx=5)
+        ttk.Button(btn_frame, text="Close", command=win.destroy).pack(side="left", padx=5)
 
     def open_workout_history_window(self):
         if not self.current_client:
@@ -554,28 +579,37 @@ BMI Categories:
         win.geometry("600x400")
         win.configure(bg="#1a1a1a")
 
-        # Treeview for workout history
         columns = ("date", "type", "duration", "notes")
-        tree = ttk.Treeview(win, columns=columns, show="headings")
+        frame = tk.Frame(win, bg="#2a2a2a")
+        frame.pack(fill="both", expand=True, padx=10, pady=10)
+        tree = ttk.Treeview(frame, columns=columns, show="headings", style="Treeview")
         for c in columns:
-            tree.heading(c, c.title())
+            tree.heading(c, text=c.title())
             tree.column(c, width=120)
-        tree.pack(fill="both", expand=True, padx=10, pady=10)
+        vsb = ttk.Scrollbar(frame, orient="vertical", command=tree.yview)
+        tree.configure(yscrollcommand=vsb.set)
+        vsb.pack(side="right", fill="y")
+        tree.pack(fill="both", expand=True)
+        tree.tag_configure("odd",  background="#2a2a2a", foreground="white")
+        tree.tag_configure("even", background="#333333", foreground="white")
 
         # Load workout history
         try:
             response = requests.get(f"{API_BASE_URL}/api/workouts?member={self.current_client}")
             if response.status_code == 200:
                 workouts = response.json()
-                for workout in workouts:
+                for i, workout in enumerate(workouts):
                     tree.insert("", "end", values=(
                         workout['date'],
                         workout['workout_type'],
                         workout['duration_min'],
                         workout['notes']
-                    ))
+                    ), tags=("even" if i % 2 == 0 else "odd",))
         except Exception as e:
             messagebox.showerror("Error", f"Failed to load workout history: {str(e)}")
+
+        tk.Frame(win, bg="#1a1a1a").pack(pady=2)
+        ttk.Button(win, text="Close", command=win.destroy).pack(pady=5)
 
     def open_trainer_management(self):
         win = tk.Toplevel(self.root)
@@ -583,26 +617,31 @@ BMI Categories:
         win.geometry("600x500")
         win.configure(bg="#1a1a1a")
 
-        # Trainer list
         columns = ("name", "specialization", "experience", "email")
-        tree = ttk.Treeview(win, columns=columns, show="headings")
+        frame = tk.Frame(win, bg="#2a2a2a")
+        frame.pack(fill="both", expand=True, padx=10, pady=10)
+        tree = ttk.Treeview(frame, columns=columns, show="headings", style="Treeview")
         for c in columns:
-            tree.heading(c, c.title())
-            tree.column(c, width=120)
-        tree.pack(fill="both", expand=True, padx=10, pady=10)
+            tree.heading(c, text=c.title())
+            tree.column(c, width=130)
+        vsb = ttk.Scrollbar(frame, orient="vertical", command=tree.yview)
+        tree.configure(yscrollcommand=vsb.set)
+        vsb.pack(side="right", fill="y")
+        tree.pack(fill="both", expand=True)
+        tree.tag_configure("odd",  background="#2a2a2a", foreground="white")
+        tree.tag_configure("even", background="#333333", foreground="white")
 
-        # Load trainers
         try:
             response = requests.get(f"{API_BASE_URL}/api/members/trainers")
             if response.status_code == 200:
                 trainers = response.json()
-                for trainer in trainers:
+                for i, trainer in enumerate(trainers):
                     tree.insert("", "end", values=(
                         trainer['name'],
                         trainer['specialization'] or '',
                         trainer['experience_years'] or '',
                         trainer['email'] or ''
-                    ))
+                    ), tags=("even" if i % 2 == 0 else "odd",))
         except Exception as e:
             messagebox.showerror("Error", f"Failed to load trainers: {str(e)}")
 
@@ -612,6 +651,7 @@ BMI Categories:
 
         ttk.Button(button_frame, text="Add Trainer", command=lambda: self.add_trainer(win, tree)).pack(side="left", padx=5)
         ttk.Button(button_frame, text="Refresh", command=lambda: self.refresh_trainers(tree)).pack(side="left", padx=5)
+        ttk.Button(button_frame, text="Close", command=win.destroy).pack(side="left", padx=5)
 
     def add_trainer(self, parent_win, tree):
         win = tk.Toplevel(parent_win)
@@ -655,7 +695,10 @@ BMI Categories:
             except Exception as e:
                 messagebox.showerror("Error", f"Failed to add trainer: {str(e)}")
 
-        ttk.Button(win, text="Save Trainer", command=save_trainer).pack(pady=10)
+        btn_frame = tk.Frame(win, bg="#1a1a1a")
+        btn_frame.pack(pady=10)
+        ttk.Button(btn_frame, text="Save Trainer", command=save_trainer).pack(side="left", padx=5)
+        ttk.Button(btn_frame, text="Close", command=win.destroy).pack(side="left", padx=5)
 
     def refresh_trainers(self, tree):
         for row in tree.get_children():
@@ -681,20 +724,25 @@ BMI Categories:
         win.geometry("700x500")
         win.configure(bg="#1a1a1a")
 
-        # Subscription list
         columns = ("client", "plan", "start_date", "end_date", "fee", "status")
-        tree = ttk.Treeview(win, columns=columns, show="headings")
+        frame = tk.Frame(win, bg="#2a2a2a")
+        frame.pack(fill="both", expand=True, padx=10, pady=10)
+        tree = ttk.Treeview(frame, columns=columns, show="headings", style="Treeview")
         for c in columns:
-            tree.heading(c, c.title())
+            tree.heading(c, text=c.title())
             tree.column(c, width=100)
-        tree.pack(fill="both", expand=True, padx=10, pady=10)
+        vsb = ttk.Scrollbar(frame, orient="vertical", command=tree.yview)
+        tree.configure(yscrollcommand=vsb.set)
+        vsb.pack(side="right", fill="y")
+        tree.pack(fill="both", expand=True)
+        tree.tag_configure("odd",  background="#2a2a2a", foreground="white")
+        tree.tag_configure("even", background="#333333", foreground="white")
 
-        # Load subscriptions
         try:
             response = requests.get(f"{API_BASE_URL}/api/subscriptions")
             if response.status_code == 200:
                 subscriptions = response.json()
-                for sub in subscriptions:
+                for i, sub in enumerate(subscriptions):
                     tree.insert("", "end", values=(
                         sub['client_name'],
                         sub['plan_name'],
@@ -702,7 +750,7 @@ BMI Categories:
                         sub['end_date'],
                         f"${sub['fee']}",
                         sub['status']
-                    ))
+                    ), tags=("even" if i % 2 == 0 else "odd",))
         except Exception as e:
             messagebox.showerror("Error", f"Failed to load subscriptions: {str(e)}")
 
@@ -712,6 +760,7 @@ BMI Categories:
 
         ttk.Button(button_frame, text="Add Subscription", command=lambda: self.add_subscription(win, tree)).pack(side="left", padx=5)
         ttk.Button(button_frame, text="Refresh", command=lambda: self.refresh_subscriptions(tree)).pack(side="left", padx=5)
+        ttk.Button(button_frame, text="Close", command=win.destroy).pack(side="left", padx=5)
 
     def add_subscription(self, parent_win, tree):
         win = tk.Toplevel(parent_win)
@@ -757,7 +806,10 @@ BMI Categories:
             except Exception as e:
                 messagebox.showerror("Error", f"Failed to add subscription: {str(e)}")
 
-        ttk.Button(win, text="Save Subscription", command=save_subscription).pack(pady=10)
+        btn_frame = tk.Frame(win, bg="#1a1a1a")
+        btn_frame.pack(pady=10)
+        ttk.Button(btn_frame, text="Save Subscription", command=save_subscription).pack(side="left", padx=5)
+        ttk.Button(btn_frame, text="Close", command=win.destroy).pack(side="left", padx=5)
 
     def refresh_subscriptions(self, tree):
         for row in tree.get_children():
