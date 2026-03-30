@@ -7,6 +7,10 @@ pipeline {
         WORKING_DIR   = 'flask_app'
         COVERAGE_MIN  = '60'
         IMAGE_NAME    = 'aceest-fitness-api'
+        // Full paths so Jenkins Windows service can find Python and pip
+        PYTHON        = 'C:\\Users\\prasa\\AppData\\Local\\Programs\\Python\\Python39\\python.exe'
+        PIP           = 'C:\\Users\\prasa\\AppData\\Local\\Programs\\Python\\Python39\\Scripts\\pip.exe'
+        PATH          = "C:\\Users\\prasa\\AppData\\Local\\Programs\\Python\\Python39;C:\\Users\\prasa\\AppData\\Local\\Programs\\Python\\Python39\\Scripts;${env.PATH}"
     }
 
     options {
@@ -47,9 +51,9 @@ pipeline {
                 echo 'Installing Python dependencies...'
                 bat '''
                     cd %WORKING_DIR%
-                    python -m pip install --upgrade pip wheel setuptools --quiet
-                    pip install -r requirements.txt --quiet
-                    pip install flake8 pylint black --quiet
+                    %PYTHON% -m pip install --upgrade pip wheel setuptools --quiet
+                    %PYTHON% -m pip install -r requirements.txt --quiet
+                    %PYTHON% -m pip install flake8 pylint black --quiet
                 '''
             }
         }
@@ -62,7 +66,7 @@ pipeline {
                         echo 'Running Flake8 linting...'
                         bat '''
                             cd %WORKING_DIR%
-                            flake8 . ^
+                            %PYTHON% -m flake8 . ^
                                 --count ^
                                 --exit-zero ^
                                 --max-complexity=10 ^
@@ -79,7 +83,7 @@ pipeline {
                         echo 'Checking code formatting with Black...'
                         bat '''
                             cd %WORKING_DIR%
-                            black --check --diff . --exclude="/(tests|instance|__pycache__)/" || exit /b 0
+                            %PYTHON% -m black --check --diff . --exclude="/(tests|instance|__pycache__)/" || exit /b 0
                         '''
                     }
                 }
@@ -92,7 +96,7 @@ pipeline {
                 echo 'Validating application builds correctly...'
                 bat '''
                     cd %WORKING_DIR%
-                    python -c "import sys; sys.path.insert(0, '.'); from flask import Flask; from config import Config; app = Flask(__name__); app.config.from_object(Config); print('Build validation: Flask app instantiated successfully'); print('Python version: ' + sys.version)"
+                    %PYTHON% -c "import sys; sys.path.insert(0, '.'); from flask import Flask; from config import Config; app = Flask(__name__); app.config.from_object(Config); print('Build validation: Flask app instantiated successfully'); print('Python version: ' + sys.version)"
                 '''
             }
         }
@@ -103,7 +107,7 @@ pipeline {
                 echo 'Running unit tests with coverage...'
                 bat '''
                     cd %WORKING_DIR%
-                    python -m pytest tests/ ^
+                    %PYTHON% -m pytest tests/ ^
                         -v ^
                         --tb=short ^
                         -m "not slow and not integration" ^
@@ -139,7 +143,7 @@ pipeline {
                 bat """
                     cd %WORKING_DIR%
                     if exist coverage.xml (
-                        python -c "import xml.etree.ElementTree as ET, sys; tree = ET.parse('coverage.xml'); root = tree.getroot(); rate = float(root.attrib.get('line-rate', 0)); pct = round(rate * 100, 2); minimum = float(sys.argv[1]); print(f'Coverage: {pct}%  |  Required: {minimum}%'); sys.exit(0 if pct >= minimum else 1)" ${env.COVERAGE_MIN}
+                        %PYTHON% -c "import xml.etree.ElementTree as ET, sys; tree = ET.parse('coverage.xml'); root = tree.getroot(); rate = float(root.attrib.get('line-rate', 0)); pct = round(rate * 100, 2); minimum = float(sys.argv[1]); print(f'Coverage: {pct}%%  |  Required: {minimum}%%'); sys.exit(0 if pct >= minimum else 1)" ${env.COVERAGE_MIN}
                     ) else (
                         echo WARNING: coverage.xml not found, skipping quality gate
                     )
