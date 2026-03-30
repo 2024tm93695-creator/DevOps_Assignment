@@ -29,14 +29,14 @@ pipeline {
         stage('Clean Environment') {
             steps {
                 echo 'Cleaning previous build artefacts...'
-                sh '''
-                    find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
-                    find . -name "*.pyc" -delete 2>/dev/null || true
-                    rm -rf ${WORKING_DIR}/.coverage \
-                           ${WORKING_DIR}/htmlcov \
-                           ${WORKING_DIR}/coverage.xml \
-                           ${WORKING_DIR}/junit 2>/dev/null || true
-                    mkdir -p ${WORKING_DIR}/junit
+                bat '''
+                    for /d /r . %%d in (__pycache__) do @if exist "%%d" rd /s /q "%%d"
+                    del /s /q *.pyc 2>nul || exit /b 0
+                    if exist %WORKING_DIR%\\.coverage      del /q %WORKING_DIR%\\.coverage
+                    if exist %WORKING_DIR%\\htmlcov        rd /s /q %WORKING_DIR%\\htmlcov
+                    if exist %WORKING_DIR%\\coverage.xml   del /q %WORKING_DIR%\\coverage.xml
+                    if exist %WORKING_DIR%\\junit          rd /s /q %WORKING_DIR%\\junit
+                    mkdir %WORKING_DIR%\\junit
                 '''
             }
         }
@@ -45,9 +45,9 @@ pipeline {
         stage('Install Dependencies') {
             steps {
                 echo 'Installing Python dependencies...'
-                sh '''
-                    cd ${WORKING_DIR}
-                    python3 -m pip install --upgrade pip wheel setuptools --quiet
+                bat '''
+                    cd %WORKING_DIR%
+                    python -m pip install --upgrade pip wheel setuptools --quiet
                     pip install -r requirements.txt --quiet
                     pip install flake8 pylint black --quiet
                 '''
@@ -60,25 +60,26 @@ pipeline {
                 stage('Flake8 Lint') {
                     steps {
                         echo 'Running Flake8 linting...'
-                        sh '''
-                            cd ${WORKING_DIR}
-                            flake8 . \
-                                --count \
-                                --exit-zero \
-                                --max-complexity=10 \
-                                --max-line-length=127 \
-                                --statistics \
-                                --exclude=__pycache__,tests,instance \
-                                | tee flake8_report.txt
+                        bat '''
+                            cd %WORKING_DIR%
+                            flake8 . ^
+                                --count ^
+                                --exit-zero ^
+                                --max-complexity=10 ^
+                                --max-line-length=127 ^
+                                --statistics ^
+                                --exclude=__pycache__,tests,instance ^
+                                > flake8_report.txt 2>&1
+                            type flake8_report.txt
                         '''
                     }
                 }
                 stage('Black Format Check') {
                     steps {
                         echo 'Checking code formatting with Black...'
-                        sh '''
-                            cd ${WORKING_DIR}
-                            black --check --diff . --exclude="/(tests|instance|__pycache__)/" || true
+                        bat '''
+                            cd %WORKING_DIR%
+                            black --check --diff . --exclude="/(tests|instance|__pycache__)/" || exit /b 0
                         '''
                     }
                 }
@@ -89,18 +90,9 @@ pipeline {
         stage('Build Validation') {
             steps {
                 echo 'Validating application builds correctly...'
-                sh '''
-                    cd ${WORKING_DIR}
-                    python3 -c "
-import sys
-sys.path.insert(0, '.')
-from flask import Flask
-from config import Config
-app = Flask(__name__)
-app.config.from_object(Config)
-print('Build validation: Flask app instantiated successfully')
-print('Python version:', sys.version)
-"
+                bat '''
+                    cd %WORKING_DIR%
+                    python -c "import sys; sys.path.insert(0, '.'); from flask import Flask; from config import Config; app = Flask(__name__); app.config.from_object(Config); print('Build validation: Flask app instantiated successfully'); print('Python version: ' + sys.version)"
                 '''
             }
         }
@@ -109,19 +101,19 @@ print('Python version:', sys.version)
         stage('Unit Tests') {
             steps {
                 echo 'Running unit tests with coverage...'
-                sh '''
-                    cd ${WORKING_DIR}
-                    pytest tests/ \
-                        -v \
-                        --tb=short \
-                        -m "not slow and not integration" \
-                        --cov=. \
-                        --cov-report=html:htmlcov \
-                        --cov-report=xml:coverage.xml \
-                        --cov-report=term-missing \
-                        --junitxml=junit/test-results.xml \
-                        --ignore=tests/__pycache__ \
-                        || true
+                bat '''
+                    cd %WORKING_DIR%
+                    python -m pytest tests/ ^
+                        -v ^
+                        --tb=short ^
+                        -m "not slow and not integration" ^
+                        --cov=. ^
+                        --cov-report=html:htmlcov ^
+                        --cov-report=xml:coverage.xml ^
+                        --cov-report=term-missing ^
+                        --junitxml=junit/test-results.xml ^
+                        --ignore=tests/__pycache__ ^
+                        || exit /b 0
                 '''
             }
             post {
@@ -144,31 +136,13 @@ print('Python version:', sys.version)
         stage('Quality Gate') {
             steps {
                 echo "Enforcing coverage quality gate: minimum ${env.COVERAGE_MIN}%"
-                sh """
-                    cd ${WORKING_DIR}
-                    if [ -f coverage.xml ]; then
-                        COVERAGE=\$(python3 -c "
-import xml.etree.ElementTree as ET
-tree = ET.parse('coverage.xml')
-root = tree.getroot()
-line_rate = float(root.attrib.get('line-rate', 0))
-pct = round(line_rate * 100, 2)
-print(pct)
-")
-                        echo "Coverage: \${COVERAGE}%"
-                        python3 -c "
-import sys
-coverage = float(sys.argv[1])
-minimum  = float(sys.argv[2])
-print(f'Coverage: {coverage}%  |  Required: {minimum}%')
-if coverage < minimum:
-    print('QUALITY GATE FAILED - coverage below threshold')
-    sys.exit(1)
-print('QUALITY GATE PASSED')
-" \${COVERAGE} ${env.COVERAGE_MIN}
-                    else
-                        echo "WARNING: coverage.xml not found, skipping quality gate"
-                    fi
+                bat """
+                    cd %WORKING_DIR%
+                    if exist coverage.xml (
+                        python -c "import xml.etree.ElementTree as ET, sys; tree = ET.parse('coverage.xml'); root = tree.getroot(); rate = float(root.attrib.get('line-rate', 0)); pct = round(rate * 100, 2); minimum = float(sys.argv[1]); print(f'Coverage: {pct}%  |  Required: {minimum}%'); sys.exit(0 if pct >= minimum else 1)" ${env.COVERAGE_MIN}
+                    ) else (
+                        echo WARNING: coverage.xml not found, skipping quality gate
+                    )
                 """
             }
         }
@@ -177,11 +151,11 @@ print('QUALITY GATE PASSED')
         stage('Docker Build') {
             steps {
                 echo 'Building Docker image...'
-                sh """
-                    docker build -t ${env.IMAGE_NAME}:build-${env.BUILD_NUMBER} \
-                                 -t ${env.IMAGE_NAME}:latest \
+                bat """
+                    docker build -t ${env.IMAGE_NAME}:build-${env.BUILD_NUMBER} ^
+                                 -t ${env.IMAGE_NAME}:latest ^
                                  -f Dockerfile .
-                    echo 'Docker image built successfully:'
+                    echo Docker image built successfully:
                     docker images ${env.IMAGE_NAME}
                 """
             }
