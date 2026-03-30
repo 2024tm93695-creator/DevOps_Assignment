@@ -1,0 +1,44 @@
+# Jenkins Plugins — auto-installed on first boot
+# jenkins-plugin-cli --plugin-file /usr/share/jenkins/ref/plugins.txt
+#
+# Required for this project:
+#   - GitHub integration + webhooks
+#   - Pipeline (Jenkinsfile support)
+#   - Test + Coverage reporting
+#   - Docker build support
+
+# ── Pipeline core ─────────────────────────────────────────────
+workflow-aggregator
+pipeline-stage-view
+pipeline-graph-analysis
+blueocean
+
+# ── Source Control ────────────────────────────────────────────
+git
+github
+github-branch-source
+github-pullrequest
+
+# ── Build & Credentials ───────────────────────────────────────
+credentials
+credentials-binding
+plain-credentials
+ssh-credentials
+
+# ── Test Reporting ────────────────────────────────────────────
+junit
+htmlpublisher
+cobertura
+test-results-analyzer
+
+# ── Docker ────────────────────────────────────────────────────
+docker-workflow
+docker-plugin
+docker-commons
+
+# ── Utilities ─────────────────────────────────────────────────
+timestamper
+build-timeout
+ws-cleanup
+ansicolor
+build-discarder

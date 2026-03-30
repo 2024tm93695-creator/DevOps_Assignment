@@ -1,0 +1,71 @@
+version: "3.8"
+
+# ─── Jenkins CI Server ────────────────────────────────────────────────────────
+# Run with:  docker-compose -f docker-compose.jenkins.yml up -d
+# Access at: http://localhost:8080
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  jenkins:
+    image: jenkins/jenkins:lts-jdk17
+    container_name: aceest-jenkins
+    restart: unless-stopped
+    privileged: true
+    user: root
+
+    ports:
+      - "8080:8080"       # Jenkins Web UI
+      - "50000:50000"     # Jenkins agent inbound port
+
+    environment:
+      - JAVA_OPTS=-Djenkins.install.runSetupWizard=false
+      - JENKINS_OPTS=--httpPort=8080
+
+    volumes:
+      # Persist Jenkins home directory (jobs, plugins, credentials, builds)
+      - jenkins_home:/var/jenkins_home
+      # Docker socket — allows Jenkins to run Docker commands (Docker Build stage)
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Pre-install plugins on first boot
+      - ./jenkins/plugins.txt:/usr/share/jenkins/ref/plugins.txt:ro
+      # Seed the default admin user + security config on first boot
+      - ./jenkins/init.groovy.d:/usr/share/jenkins/ref/init.groovy.d:ro
+
+    networks:
+      - jenkins-net
+
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/login"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # Optional: Jenkins agent running Python + Docker
+  jenkins-agent:
+    image: jenkins/inbound-agent:latest-jdk17
+    container_name: aceest-jenkins-agent
+    restart: unless-stopped
+    depends_on:
+      - jenkins
+    environment:
+      - JENKINS_URL=http://jenkins:8080
+      - JENKINS_AGENT_NAME=python-agent
+      # Set these after creating the agent in Jenkins UI:
+      - JENKINS_SECRET=${JENKINS_AGENT_SECRET:-changeme}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - agent_workspace:/home/jenkins/agent
+    networks:
+      - jenkins-net
+
+volumes:
+  jenkins_home:
+    driver: local
+  agent_workspace:
+    driver: local
+
+networks:
+  jenkins-net:
+    driver: bridge

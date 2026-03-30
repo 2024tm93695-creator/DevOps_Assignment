@@ -1,81 +1,189 @@
-# DevOps Assignment
+# DevOps Assignment — ACEest Fitness API
 
-This is a DevOps assignment project.
+A Flask-based fitness tracking API with a full DevOps pipeline: GitHub Actions CI/CD and Jenkins BUILD & Quality Gate.
 
-## Description
-
-[Add a brief description of the project here.]
+---
 
 ## Jenkins BUILD & Quality Gate Integration
 
-This section explains the steps to integrate a Jenkins server for handling the primary BUILD phase, including configuration of a Jenkins project that pulls the latest code from GitHub and performs a clean build. This serves as a secondary validation layer to ensure the code compiles and integrates correctly in a controlled build environment.
+Jenkins acts as a **secondary validation layer** — it pulls the latest code from GitHub, performs a clean build, runs linting, unit tests, enforces a 60% coverage quality gate, and builds the Docker image.
 
-### Prerequisites
-- A Jenkins server installed and running (local or remote).
-- GitHub repository with the project code.
-- Necessary build tools (e.g., Maven, Gradle, npm) installed on the Jenkins agent.
-- Quality gate tools (e.g., SonarQube) if applicable.
+### Pipeline Stages (defined in `Jenkinsfile`)
 
-### Steps
+| # | Stage | What it does |
+|---|-------|-------------|
+| 1 | **Checkout** | Pulls latest code from `main` branch |
+| 2 | **Clean Environment** | Removes `__pycache__`, `.pyc`, stale reports |
+| 3 | **Install Dependencies** | `pip install -r requirements.txt` + lint tools |
+| 4 | **Code Quality** | Flake8 lint + Black format check (parallel) |
+| 5 | **Build Validation** | Imports Flask app — confirms it instantiates cleanly |
+| 6 | **Unit Tests** | Pytest with coverage HTML + XML + JUnit XML |
+| 7 | **Quality Gate** | Fails build if coverage < 60% |
+| 8 | **Docker Build** | Builds `aceest-fitness-api:latest` image |
 
-1. **Install and Set Up Jenkins**:
-   - Download and install Jenkins from [jenkins.io](https://www.jenkins.io/download/).
-   - Start Jenkins and complete the initial setup wizard.
-   - Install required plugins: Git, GitHub, and any build-specific plugins (e.g., Maven Integration, Gradle, NodeJS).
+---
 
-2. **Create a New Jenkins Job**:
-   - Log in to Jenkins dashboard.
-   - Click "New Item" and select "Freestyle project" or "Pipeline" (Pipeline is recommended for modern CI/CD).
-   - Enter a name for the project (e.g., "DevOps-Assignment-Build").
+### Step 1 — Start Jenkins with Docker
 
-3. **Configure Source Code Management**:
-   - In the job configuration, go to "Source Code Management" section.
-   - Select "Git".
-   - Enter the repository URL (e.g., `https://github.com/username/repo.git`).
-   - Specify the branch to build (e.g., `main` or `master`).
-   - If using credentials, add GitHub credentials in Jenkins (Manage Jenkins > Credentials).
+The project ships a ready-to-use Jenkins stack (`docker-compose.jenkins.yml`):
 
-4. **Set Up Build Triggers**:
-   - In "Build Triggers" section, check "Poll SCM" or "GitHub hook trigger for GITScm polling".
-   - For webhooks, configure a webhook in GitHub repository settings to notify Jenkins on pushes.
+```bash
+# Start Jenkins (first boot takes ~2 min to install plugins)
+docker-compose -f docker-compose.jenkins.yml up -d
 
-5. **Configure Build Steps**:
-   - In "Build" section, add build steps based on your project type:
-     - For Maven: Add "Invoke top-level Maven targets" and specify goals like `clean compile`.
-     - For Gradle: Add "Invoke Gradle script" with tasks like `clean build`.
-     - For Node.js: Add "Execute shell" or "Execute Windows batch command" with commands like `npm install && npm run build`.
-   - Ensure the build performs a clean build (e.g., include `clean` in Maven/Gradle commands).
+# Watch startup logs
+docker logs -f aceest-jenkins
+```
 
-6. **Integrate Quality Gate**:
-   - Install and configure quality analysis tools like SonarQube.
-   - Add post-build actions or steps to run quality checks (e.g., code coverage, static analysis).
-   - Configure thresholds for build failure if quality gates are not met.
+Access Jenkins at **http://localhost:8080**
+- Username: `admin`
+- Password: `admin123`
 
-7. **Save and Test the Job**:
-   - Save the job configuration.
-   - Manually trigger a build to test.
-   - Monitor the build console output for errors.
-   - Set up notifications (e.g., email) on build success/failure.
+> Change the password immediately after first login via **Manage Jenkins > Users**.
 
-8. **Monitor and Maintain**:
-   - Regularly check build status and logs.
-   - Update plugins and Jenkins as needed.
-   - Scale Jenkins agents if build times are long.
+---
 
-This setup ensures automated, consistent builds and quality checks whenever code is pushed to GitHub.
+### Step 2 — Verify the Pipeline Job
 
-## Installation
+The init script (`jenkins/init.groovy.d/02-create-pipeline-job.groovy`) automatically creates the **ACEest-Build-Quality-Gate** pipeline job on first boot.
 
-[Add installation instructions here.]
+To verify:
+1. Open http://localhost:8080
+2. You should see the job **ACEest-Build-Quality-Gate** on the dashboard.
+3. Click it → **Build Now** to trigger a manual build.
 
-## Usage
+If the job is missing, create it manually (see Step 3).
 
-[Add usage instructions here.]
+---
 
-## Contributing
+### Step 3 — Manually Create the Pipeline Job (if needed)
 
-[Add contributing guidelines here.]
+1. Click **New Item** on the Jenkins dashboard.
+2. Enter name: `ACEest-Build-Quality-Gate`
+3. Select **Pipeline** → click **OK**.
+4. Under **General**:
+   - Check **Discard old builds** → Keep max 10 builds.
+5. Under **Build Triggers**:
+   - Check **GitHub hook trigger for GITScm polling** (for webhooks).
+   - Also check **Poll SCM** with schedule `H/5 * * * *` (fallback polling).
+6. Under **Pipeline**:
+   - Definition: **Pipeline script from SCM**
+   - SCM: **Git**
+   - Repository URL: `https://github.com/2024tm93695-creator/DevOps_Assignment.git`
+   - Branch: `*/main`
+   - Script Path: `Jenkinsfile`
+   - Check **Lightweight checkout**.
+7. Click **Save** → **Build Now**.
 
-## License
+---
 
-[Add license information here.]
+### Step 4 — Install Required Plugins
+
+Go to **Manage Jenkins > Plugins > Available** and install (or let the Docker init install them from `jenkins/plugins.txt`):
+
+- `Git`, `GitHub`, `GitHub Branch Source`
+- `Pipeline`, `Pipeline Stage View`, `Blue Ocean`
+- `JUnit`, `HTML Publisher`, `Cobertura`
+- `Docker Pipeline`, `Docker Commons`
+- `Timestamper`, `Build Timeout`, `Workspace Cleanup`
+
+---
+
+### Step 5 — Configure GitHub Webhook
+
+So Jenkins triggers automatically on every push to `main`:
+
+1. Go to your GitHub repo → **Settings > Webhooks > Add webhook**.
+2. Payload URL: `http://<your-jenkins-host>:8080/github-webhook/`
+   - For local Jenkins use [ngrok](https://ngrok.com): `ngrok http 8080` then use the HTTPS URL.
+3. Content type: `application/json`
+4. Events: **Just the push event**.
+5. Click **Add webhook**.
+
+In Jenkins, on the job → **Configure** → **Build Triggers** → enable **GitHub hook trigger for GITScm polling**.
+
+---
+
+### Step 6 — Add GitHub Credentials (for private repos)
+
+1. **Manage Jenkins > Credentials > System > Global > Add Credentials**.
+2. Kind: **Username with password** (or **Secret text** for a token).
+3. Username: your GitHub username.
+4. Password: GitHub Personal Access Token (PAT) with `repo` scope.
+5. ID: `github-credentials`
+6. In the pipeline job SCM config, select these credentials.
+
+---
+
+### Step 7 — Monitor Builds
+
+- **Dashboard**: http://localhost:8080 — see build history and status.
+- **Stage View**: Click any build → view per-stage pass/fail.
+- **Console Output**: Click a build number → **Console Output** for full logs.
+- **Coverage Report**: Published as HTML artifact after Unit Tests stage.
+- **Test Results**: JUnit XML results published after Unit Tests stage.
+
+Build status meanings:
+
+| Icon | Status |
+|------|--------|
+| Blue | Success — all stages passed, quality gate passed |
+| Red | Failure — check Quality Gate or test stage |
+| Yellow | Unstable — tests ran but some failed |
+
+---
+
+### Quality Gate Details
+
+The **Quality Gate** stage (Stage 7 in `Jenkinsfile`) reads `coverage.xml` after tests and:
+- Calculates the overall line coverage percentage.
+- **Fails the build** if coverage is below **60%**.
+- Prints `QUALITY GATE PASSED` or `QUALITY GATE FAILED` in the console.
+
+To change the threshold, edit `COVERAGE_MIN` in the `Jenkinsfile` environment block:
+
+```groovy
+environment {
+    COVERAGE_MIN = '60'   // change this value (percentage)
+}
+```
+
+---
+
+### Project Structure
+
+```
+DevOps_Assignment/
+├── Jenkinsfile                    # Jenkins pipeline definition (8 stages)
+├── Dockerfile                     # Multi-stage Docker build
+├── docker-compose.jenkins.yml     # Jenkins server Docker Compose
+├── docker-compose.yml             # App Docker Compose
+├── jenkins/
+│   ├── plugins.txt                # Auto-installed Jenkins plugins
+│   └── init.groovy.d/
+│       ├── 01-security.groovy     # Admin user + security setup
+│       └── 02-create-pipeline-job.groovy  # Auto-creates pipeline job
+├── flask_app/
+│   ├── app.py
+│   ├── config.py
+│   ├── requirements.txt
+│   └── tests/
+│       ├── test_models.py
+│       ├── test_routes.py
+│       ├── test_services.py
+│       └── test_utils.py
+└── .github/
+    └── workflows/
+        └── main.yml               # GitHub Actions CI/CD (parallel pipeline)
+```
+
+---
+
+### Stopping Jenkins
+
+```bash
+docker-compose -f docker-compose.jenkins.yml down
+
+# To also remove all data (full reset):
+docker-compose -f docker-compose.jenkins.yml down -v
+```
