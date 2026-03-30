@@ -16,18 +16,22 @@ jobs:
   test:
     name: Run Tests and Coverage
     runs-on: ubuntu-latest
+    permissions:
+      checks: write
+      pull-requests: write
+      contents: read
     strategy:
       matrix:
         python-version: ['3.9', '3.10', '3.11']
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
         fetch-depth: 0
 
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: ${{ matrix.python-version }}
         cache: 'pip'
@@ -59,7 +63,7 @@ jobs:
           --junitxml=junit/test-results-${{ matrix.python-version }}.xml
 
     - name: Upload coverage reports
-      uses: codecov/codecov-action@v3
+      uses: codecov/codecov-action@v4
       with:
         file: ./flask_app/coverage.xml
         flags: unittests
@@ -68,7 +72,7 @@ jobs:
 
     - name: Archive test results
       if: always()
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: test-results-${{ matrix.python-version }}
         path: |
@@ -89,10 +93,10 @@ jobs:
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: '3.10'
         cache: 'pip'
@@ -121,7 +125,7 @@ jobs:
       continue-on-error: true
 
     - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v3
+      uses: codecov/codecov-action@v4
       with:
         file: ./flask_app/coverage.xml
         fail_ci_if_error: false
@@ -132,10 +136,10 @@ jobs:
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: '3.10'
         cache: 'pip'
@@ -157,7 +161,7 @@ jobs:
 
     - name: Archive integration test results
       if: always()
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: integration-test-results
         path: flask_app/junit/integration-tests.xml
@@ -170,10 +174,10 @@ jobs:
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: '3.10'
 
