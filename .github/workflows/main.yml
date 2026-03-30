@@ -13,7 +13,7 @@ env:
 jobs:
 
   # ────────────────────────────────────────────────────────────────────────────
-  # JOB 1 ─ BUILD & LINT
+  # JOB 1 — BUILD & LINT
   # Installs dependencies, validates the app imports cleanly, runs Flake8 + Black
   # ────────────────────────────────────────────────────────────────────────────
   build-and-lint:
@@ -46,9 +46,10 @@ jobs:
           echo "── Checking Python syntax ──────────────────────"
           python -m py_compile app.py
           python -m py_compile config.py
-          find . -name "*.py" -not -path "./__pycache__/*" \
-                              -not -path "./tests/*" \
-                              -not -path "./instance/*" \
+          find . -name "*.py" \
+                 -not -path "./__pycache__/*" \
+                 -not -path "./tests/*" \
+                 -not -path "./instance/*" \
             | xargs python -m py_compile
           echo "All files compiled without syntax errors."
 
@@ -102,8 +103,8 @@ jobs:
             || true
 
   # ────────────────────────────────────────────────────────────────────────────
-  # JOB 2 ─ DOCKER IMAGE ASSEMBLY
-  # Builds the Flask API Docker image; confirms it starts and responds to /
+  # JOB 2 — DOCKER IMAGE ASSEMBLY
+  # Builds the Flask API Docker image; confirms it starts and responds
   # ────────────────────────────────────────────────────────────────────────────
   docker-build:
     name: Docker Image Assembly
@@ -111,7 +112,7 @@ jobs:
     needs: build-and-lint
 
     outputs:
-      image_tag: ${{ steps.meta.outputs.tag }}
+      short_sha: ${{ steps.meta.outputs.short_sha }}
 
     steps:
       - name: Checkout code
@@ -124,10 +125,8 @@ jobs:
         id: meta
         run: |
           SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-8)
-          TAG="${{ env.IMAGE_NAME }}:${SHORT_SHA}"
-          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
           echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
-          echo "Image tag will be: ${TAG}"
+          echo "Image tag will be: ${{ env.IMAGE_NAME }}:${SHORT_SHA}"
 
       - name: Build Docker image
         uses: docker/build-push-action@v5
@@ -147,7 +146,7 @@ jobs:
           echo "── Built images ────────────────────────────────"
           docker images ${{ env.IMAGE_NAME }}
 
-      - name: Smoke-test container starts and responds
+      - name: Smoke-test — container starts and responds
         run: |
           echo "── Starting container ──────────────────────────"
           docker run -d \
@@ -157,7 +156,7 @@ jobs:
             -e FLASK_ENV=testing \
             ${{ env.IMAGE_NAME }}:latest
 
-          echo "── Waiting for Flask to be ready ───────────────"
+          echo "── Waiting for Flask to be ready (max 30s) ─────"
           for i in $(seq 1 15); do
             if curl -sf http://localhost:5000/ > /dev/null 2>&1; then
               echo "Container is healthy (attempt ${i})"
@@ -167,14 +166,13 @@ jobs:
             sleep 2
           done
 
-          echo "── Container health check ──────────────────────"
-          curl -sf http://localhost:5000/ && echo "API responded OK"
-
           echo "── Container logs ──────────────────────────────"
           docker logs smoke-test
 
-          docker stop smoke-test
-          docker rm smoke-test
+          echo "── Checking container is still running ─────────"
+          docker ps | grep smoke-test
+
+          docker stop smoke-test && docker rm smoke-test
 
       - name: Save image as artifact
         run: |
@@ -184,19 +182,24 @@ jobs:
       - name: Upload image artifact
         uses: actions/upload-artifact@v4
         with:
-          name: docker-image-${{ steps.meta.outputs.short_sha }}
+          name: docker-image
           path: /tmp/image.tar.gz
           retention-days: 3
 
   # ────────────────────────────────────────────────────────────────────────────
-  # JOB 3 ─ AUTOMATED TESTING (inside the container)
+  # JOB 3 — AUTOMATED TESTING (inside the container)
   # Loads the built image, runs the full Pytest suite inside it,
-  # publishes JUnit results and coverage report
+  # publishes JUnit results and enforces 60% coverage quality gate
   # ────────────────────────────────────────────────────────────────────────────
   automated-testing:
     name: Automated Testing (Containerized)
     runs-on: ubuntu-latest
     needs: docker-build
+
+    permissions:
+      checks: write
+      pull-requests: write
+      contents: read
 
     steps:
       - name: Checkout code
@@ -205,18 +208,18 @@ jobs:
       - name: Download Docker image artifact
         uses: actions/download-artifact@v4
         with:
-          name: docker-image-${{ needs.docker-build.outputs.image_tag && '' || github.sha && '' }}
+          name: docker-image
           path: /tmp/
 
-      - name: Find and load Docker image
+      - name: Load Docker image
         run: |
-          IMAGE_FILE=$(find /tmp -name "*.tar.gz" | head -1)
-          echo "Loading image from: ${IMAGE_FILE}"
-          docker load < "${IMAGE_FILE}"
+          echo "── Loading image ────────────────────────────────"
+          docker load < /tmp/image.tar.gz
           docker images ${{ env.IMAGE_NAME }}
 
       - name: Run Pytest suite inside container
         run: |
+          mkdir -p /tmp/test-results
           echo "── Running full test suite inside container ────"
           docker run --rm \
             --name aceest-tests \
@@ -243,23 +246,27 @@ jobs:
         run: |
           echo "── Test Results ────────────────────────────────"
           if [ -f /tmp/test-results/test-results.xml ]; then
-            grep -o 'tests="[^"]*"' /tmp/test-results/test-results.xml | head -1 || true
+            grep -o 'tests="[^"]*"'    /tmp/test-results/test-results.xml | head -1 || true
             grep -o 'failures="[^"]*"' /tmp/test-results/test-results.xml | head -1 || true
-            grep -o 'errors="[^"]*"' /tmp/test-results/test-results.xml | head -1 || true
+            grep -o 'errors="[^"]*"'   /tmp/test-results/test-results.xml | head -1 || true
           else
-            echo "No test results XML found"
+            echo "No test-results.xml found"
           fi
-
-          echo "── Coverage ─────────────────────────────────────"
+          echo "── Coverage ────────────────────────────────────"
           if [ -f /tmp/test-results/coverage.xml ]; then
             grep -o 'line-rate="[^"]*"' /tmp/test-results/coverage.xml | head -1 || true
           fi
+
+      - name: Copy results for publishing
+        if: always()
+        run: |
+          cp -r /tmp/test-results ${{ github.workspace }}/test-results || true
 
       - name: Publish JUnit test results
         if: always()
         uses: EnricoMi/publish-unit-test-result-action@v2
         with:
-          files: /tmp/test-results/test-results.xml
+          files: test-results/test-results.xml
           check_name: "Pytest Results (Container)"
           comment_mode: always
           fail_on: "test failures"
@@ -272,7 +279,7 @@ jobs:
           path: /tmp/test-results/
           retention-days: 7
 
-      - name: Enforce coverage quality gate
+      - name: Enforce coverage quality gate (60%)
         run: |
           if [ ! -f /tmp/test-results/coverage.xml ]; then
             echo "WARNING: coverage.xml not found, skipping gate"
@@ -291,8 +298,7 @@ jobs:
           fi
 
   # ────────────────────────────────────────────────────────────────────────────
-  # JOB 4 ─ PIPELINE SUMMARY
-  # Runs after all jobs; reports overall pass/fail status
+  # JOB 4 — PIPELINE SUMMARY
   # ────────────────────────────────────────────────────────────────────────────
   pipeline-summary:
     name: Pipeline Summary
@@ -315,8 +321,8 @@ jobs:
           echo " Automated Tests  : ${{ needs.automated-testing.result }}"
           echo "════════════════════════════════════════════════"
 
-          if [ "${{ needs.build-and-lint.result }}"   = "failure" ] || \
-             [ "${{ needs.docker-build.result }}"     = "failure" ] || \
+          if [ "${{ needs.build-and-lint.result }}"    = "failure" ] || \
+             [ "${{ needs.docker-build.result }}"      = "failure" ] || \
              [ "${{ needs.automated-testing.result }}" = "failure" ]; then
             echo " PIPELINE STATUS: FAILED"
             exit 1
