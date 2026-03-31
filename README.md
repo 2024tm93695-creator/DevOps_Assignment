@@ -1,200 +1,324 @@
-# DevOps Assignment — ACEest Fitness API
+# ACEest Fitness Management System
 
-A Flask-based fitness tracking API with a full DevOps pipeline: GitHub Actions CI/CD and Jenkins BUILD & Quality Gate.
-
----
-
-## Jenkins BUILD & Quality Gate Integration
-
-Jenkins acts as a **secondary validation layer** — it pulls the latest code from GitHub, performs a clean build, runs linting, unit tests, enforces a 60% coverage quality gate, and builds the Docker image.
-
-### Pipeline Stages (defined in `Jenkinsfile`)
-
-| # | Stage | What it does |
-|---|-------|-------------|
-| 1 | **Checkout** | Pulls latest code from `main` branch |
-| 2 | **Clean Environment** | Removes `__pycache__`, `.pyc`, stale reports |
-| 3 | **Install Dependencies** | `pip install -r requirements.txt` + lint tools |
-| 4 | **Code Quality** | Flake8 lint + Black format check (parallel) |
-| 5 | **Build Validation** | Imports Flask app — confirms it instantiates cleanly |
-| 6 | **Unit Tests** | Pytest with coverage HTML + XML + JUnit XML |
-| 7 | **Quality Gate** | Fails build if coverage < 60% |
-| 8 | **Docker Build** | Builds `aceest-fitness-api:latest` image |
+A full-stack fitness management application with a Flask REST API backend, Tkinter desktop UI, and a complete DevOps pipeline using Jenkins and GitHub Actions.
 
 ---
 
-### Step 1 — Start Jenkins with Docker
+## Table of Contents
 
-The project ships a ready-to-use Jenkins stack (`docker-compose.jenkins.yml`):
+- [Project Overview](#project-overview)
+- [Technology Stack](#technology-stack)
+- [Local Setup and Execution](#local-setup-and-execution)
+  - [Prerequisites](#prerequisites)
+  - [Running the Flask API Locally](#running-the-flask-api-locally)
+  - [Running the UI Locally](#running-the-ui-locally)
+  - [Running with Docker Compose](#running-with-docker-compose)
+- [Running Tests Manually](#running-tests-manually)
+  - [Install Test Dependencies](#install-test-dependencies)
+  - [Run All Tests](#run-all-tests)
+  - [Run Specific Test Suites](#run-specific-test-suites)
+  - [Run Tests with Coverage Report](#run-tests-with-coverage-report)
+  - [Test Markers](#test-markers)
+- [API Endpoints](#api-endpoints)
+- [CI/CD Pipeline Overview](#cicd-pipeline-overview)
+  - [Jenkins Pipeline](#jenkins-pipeline)
+  - [GitHub Actions](#github-actions)
+- [Project Structure](#project-structure)
+
+---
+
+## Project Overview
+
+ACEest is a fitness management system that tracks members, workouts, subscriptions, and trainer assignments. It exposes a REST API (Flask + SQLAlchemy) and a desktop GUI (Tkinter) that communicates with the API. The project is containerised with Docker and includes automated CI/CD pipelines for both Jenkins (Windows) and GitHub Actions (Linux).
+
+---
+
+## Technology Stack
+
+| Layer | Technology |
+|-------|-----------|
+| API Framework | Flask 2.3.3, Flask-SQLAlchemy, Flask-CORS |
+| Database | SQLite |
+| Desktop UI | Tkinter + Matplotlib (served over VNC via noVNC) |
+| Containerisation | Docker (multi-stage), Docker Compose |
+| Reverse Proxy | Nginx |
+| CI/CD | Jenkins (Windows), GitHub Actions (Linux/Ubuntu) |
+| Testing | Pytest, pytest-cov, pytest-mock |
+| Code Quality | Flake8, Black, Pylint |
+| Python Versions | 3.9, 3.10, 3.11 |
+
+---
+
+## Local Setup and Execution
+
+### Prerequisites
+
+- Python 3.9 or higher
+- pip
+- (Optional) Docker Desktop for containerised setup
+
+### Running the Flask API Locally
 
 ```bash
-# Start Jenkins (first boot takes ~2 min to install plugins)
-docker-compose -f docker-compose.jenkins.yml up -d
+# 1. Clone the repository
+git clone <repo-url>
+cd DevOps_Assignment
 
-# Watch startup logs
-docker logs -f aceest-jenkins
+# 2. Create and activate a virtual environment
+python -m venv venv
+# Windows
+venv\Scripts\activate
+# macOS/Linux
+source venv/bin/activate
+
+# 3. Install dependencies
+cd flask_app
+pip install -r requirements.txt
+
+# 4. Run the API server
+flask run
+# Or explicitly:
+python -m flask run --host=0.0.0.0 --port=5000
 ```
 
-Access Jenkins at **http://localhost:8080**
-- Username: `admin`
-- Password: `admin123`
+The API will be available at `http://localhost:5000`.
 
-> Change the password immediately after first login via **Manage Jenkins > Users**.
+### Running the UI Locally
 
----
+The UI requires Tkinter (bundled with most Python distributions) and the Flask API to be running.
 
-### Step 2 — Verify the Pipeline Job
+```bash
+cd ui_app
+pip install -r requirements.txt
 
-The init script (`jenkins/init.groovy.d/02-create-pipeline-job.groovy`) automatically creates the **ACEest-Build-Quality-Gate** pipeline job on first boot.
+# Set the API base URL (defaults to http://localhost:5000)
+export API_BASE_URL=http://localhost:5000   # macOS/Linux
+set API_BASE_URL=http://localhost:5000      # Windows
 
-To verify:
-1. Open http://localhost:8080
-2. You should see the job **ACEest-Build-Quality-Gate** on the dashboard.
-3. Click it → **Build Now** to trigger a manual build.
+python aceest_ui.py
+```
 
-If the job is missing, create it manually (see Step 3).
+### Running with Docker Compose
 
----
+The full stack (API + UI via VNC + Nginx reverse proxy + Jenkins) can be started with a single command:
 
-### Step 3 — Manually Create the Pipeline Job (if needed)
+```bash
+# Start all services
+docker-compose up --build
 
-1. Click **New Item** on the Jenkins dashboard.
-2. Enter name: `ACEest-Build-Quality-Gate`
-3. Select **Pipeline** → click **OK**.
-4. Under **General**:
-   - Check **Discard old builds** → Keep max 10 builds.
-5. Under **Build Triggers**:
-   - Check **GitHub hook trigger for GITScm polling** (for webhooks).
-   - Also check **Poll SCM** with schedule `H/5 * * * *` (fallback polling).
-6. Under **Pipeline**:
-   - Definition: **Pipeline script from SCM**
-   - SCM: **Git**
-   - Repository URL: `https://github.com/2024tm93695-creator/DevOps_Assignment.git`
-   - Branch: `*/main`
-   - Script Path: `Jenkinsfile`
-   - Check **Lightweight checkout**.
-7. Click **Save** → **Build Now**.
+# Start only the API and Nginx
+docker-compose up flask-app nginx
 
----
+# Stop all services
+docker-compose down
+```
 
-### Step 4 — Install Required Plugins
+| Service | URL |
+|---------|-----|
+| Flask API | http://localhost:5000 |
+| UI (noVNC) | http://localhost:6080 |
+| Nginx proxy | http://localhost:80 |
+| Jenkins | http://localhost:8081 |
 
-Go to **Manage Jenkins > Plugins > Available** and install (or let the Docker init install them from `jenkins/plugins.txt`):
+To start only the Jenkins stack:
 
-- `Git`, `GitHub`, `GitHub Branch Source`
-- `Pipeline`, `Pipeline Stage View`, `Blue Ocean`
-- `JUnit`, `HTML Publisher`, `Cobertura`
-- `Docker Pipeline`, `Docker Commons`
-- `Timestamper`, `Build Timeout`, `Workspace Cleanup`
-
----
-
-### Step 5 — Configure GitHub Webhook
-
-So Jenkins triggers automatically on every push to `main`:
-
-1. Go to your GitHub repo → **Settings > Webhooks > Add webhook**.
-2. Payload URL: `http://<your-jenkins-host>:8080/github-webhook/`
-   - For local Jenkins use [ngrok](https://ngrok.com): `ngrok http 8080` then use the HTTPS URL.
-3. Content type: `application/json`
-4. Events: **Just the push event**.
-5. Click **Add webhook**.
-
-In Jenkins, on the job → **Configure** → **Build Triggers** → enable **GitHub hook trigger for GITScm polling**.
-
----
-
-### Step 6 — Add GitHub Credentials (for private repos)
-
-1. **Manage Jenkins > Credentials > System > Global > Add Credentials**.
-2. Kind: **Username with password** (or **Secret text** for a token).
-3. Username: your GitHub username.
-4. Password: GitHub Personal Access Token (PAT) with `repo` scope.
-5. ID: `github-credentials`
-6. In the pipeline job SCM config, select these credentials.
-
----
-
-### Step 7 — Monitor Builds
-
-- **Dashboard**: http://localhost:8080 — see build history and status.
-- **Stage View**: Click any build → view per-stage pass/fail.
-- **Console Output**: Click a build number → **Console Output** for full logs.
-- **Coverage Report**: Published as HTML artifact after Unit Tests stage.
-- **Test Results**: JUnit XML results published after Unit Tests stage.
-
-Build status meanings:
-
-| Icon | Status |
-|------|--------|
-| Blue | Success — all stages passed, quality gate passed |
-| Red | Failure — check Quality Gate or test stage |
-| Yellow | Unstable — tests ran but some failed |
-
----
-
-### Quality Gate Details
-
-The **Quality Gate** stage (Stage 7 in `Jenkinsfile`) reads `coverage.xml` after tests and:
-- Calculates the overall line coverage percentage.
-- **Fails the build** if coverage is below **60%**.
-- Prints `QUALITY GATE PASSED` or `QUALITY GATE FAILED` in the console.
-
-To change the threshold, edit `COVERAGE_MIN` in the `Jenkinsfile` environment block:
-
-```groovy
-environment {
-    COVERAGE_MIN = '60'   // change this value (percentage)
-}
+```bash
+docker-compose -f docker-compose.jenkins.yml up --build
 ```
 
 ---
 
-### Project Structure
+## Running Tests Manually
+
+All test commands should be run from the `flask_app/` directory.
+
+```bash
+cd flask_app
+```
+
+### Install Test Dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+### Run All Tests
+
+```bash
+pytest tests/ -v
+```
+
+### Run Specific Test Suites
+
+```bash
+# Routes (API endpoint tests)
+pytest tests/test_routes.py -v
+
+# Service layer tests
+pytest tests/test_services.py -v
+
+# Model tests
+pytest tests/test_models.py -v
+
+# Utility function tests
+pytest tests/test_utils.py -v
+```
+
+### Run Tests with Coverage Report
+
+```bash
+# Terminal report
+pytest tests/ -v --cov=. --cov-report=term-missing
+
+# HTML report (opens htmlcov/index.html)
+pytest tests/ -v --cov=. --cov-report=html:htmlcov
+
+# XML report (used by CI/CD)
+pytest tests/ -v --cov=. --cov-report=xml:coverage.xml
+```
+
+The project enforces a **minimum coverage threshold of 60%**.
+
+### Test Markers
+
+Tests are tagged with markers defined in `pytest.ini`:
+
+```bash
+# Run only unit tests
+pytest tests/ -m unit
+
+# Run only integration tests
+pytest tests/ -m integration
+
+# Run edge case and negative tests
+pytest tests/ -m "edge_case or negative"
+
+# Exclude slow tests (mirrors CI behaviour)
+pytest tests/ -m "not slow"
+
+# Exclude slow and integration tests (mirrors Jenkins behaviour)
+pytest tests/ -m "not slow and not integration"
+```
+
+| Marker | Description |
+|--------|-------------|
+| `unit` | Isolated component tests with no external dependencies |
+| `integration` | Multi-component tests that hit the database |
+| `edge_case` | Boundary value and unusual input tests |
+| `negative` | Error-path and validation failure tests |
+| `slow` | Tests with extended runtime, excluded from fast CI runs |
+
+---
+
+## API Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/` | Health check |
+| GET | `/api/members` | List all members |
+| GET | `/api/members/<id>` | Get member by ID |
+| POST | `/api/members` | Create a new member |
+| PUT | `/api/members/<id>` | Update a member |
+| DELETE | `/api/members/<id>` | Delete a member |
+| GET | `/api/members/<name>/summary` | Get member summary |
+| GET | `/api/members/trainers` | List all trainers |
+| POST | `/api/members/trainers` | Create a trainer |
+| PUT | `/api/members/trainers/<id>` | Update a trainer |
+| DELETE | `/api/members/trainers/<id>` | Delete a trainer |
+| GET | `/api/workouts` | List workouts (filter by `?member=name`) |
+| GET | `/api/workouts/<id>` | Get workout with exercises |
+| POST | `/api/workouts` | Create a workout |
+| PUT | `/api/workouts/<id>` | Update a workout |
+| DELETE | `/api/workouts/<id>` | Delete a workout |
+| GET/POST/PUT/DELETE | `/api/subscriptions` | Subscription CRUD |
+
+---
+
+## CI/CD Pipeline Overview
+
+### Jenkins Pipeline
+
+**File:** `Jenkinsfile`  
+**Target:** Windows agent with Python 3.9 installed at `C:\Python39\python.exe`
+
+The Jenkins declarative pipeline runs the following stages in order:
+
+| Stage | What It Does |
+|-------|-------------|
+| **Checkout** | Pulls the `main` branch from the configured SCM repository |
+| **Clean Environment** | Removes `__pycache__`, `.pyc` files, and stale coverage/test artifacts to ensure a clean build |
+| **Install Dependencies** | Upgrades pip and installs all packages from `flask_app/requirements.txt` |
+| **Code Quality** (parallel) | Runs **Flake8** (PEP 8, max complexity 10, max line 127) and **Black** (format check) in parallel; either failure fails the stage |
+| **Build Validation** | Imports and instantiates the Flask app to confirm the application can start without errors |
+| **Unit Tests** | Executes `pytest` excluding `slow` and `integration` markers; generates JUnit XML and an HTML coverage report |
+| **Quality Gate** | Parses the coverage report and fails the build if total coverage falls below **60%** |
+| **Docker Build** | Builds a Docker image tagged with `aceest-fitness:latest` and `aceest-fitness:<build-number>` |
+
+Post-build actions archive JUnit test results and the HTML coverage report as Jenkins artifacts regardless of build outcome.
+
+---
+
+### GitHub Actions
+
+Two workflow files are defined under `.github/workflows/`.
+
+#### `main.yml` — Primary CI/CD Workflow
+
+Triggered on every push and pull request to `main`. Runs on `ubuntu-latest` with Python 3.11.
+
+| Job | Dependencies | What It Does |
+|-----|-------------|-------------|
+| **build-and-lint** | — | Installs dependencies; runs Flake8, Black, and Pylint; fails fast on any quality violation |
+| **docker-build** | build-and-lint | Builds the multi-stage Docker image; runs a smoke test by starting the container and checking the `/` health endpoint; uploads the image as a 3-day artifact |
+| **automated-testing** | docker-build | Starts the built container; runs `pytest` inside it with XML coverage output; publishes JUnit results; enforces the 60% coverage gate |
+| **pipeline-summary** | automated-testing | Prints a final pass/fail summary with links to artifacts |
+
+#### `test.yml` — Multi-Version Test Matrix
+
+Triggered on push/PR and can be run manually (`workflow_dispatch`). Tests across a matrix of Python **3.9, 3.10, and 3.11**.
+
+| Job | What It Does |
+|-----|-------------|
+| **test** | Runs unit tests with coverage on each Python version; uploads results to Codecov |
+| **coverage-check** | Generates an HTML coverage report and uploads it as an artifact |
+| **test-integration** | Runs only `@pytest.mark.integration` tests against a live in-memory database |
+| **build-validation** | Final readiness check — imports the app and verifies it starts cleanly |
+
+Both workflows enforce the **60% minimum coverage threshold** and will fail the run if it is not met.
+
+---
+
+## Project Structure
 
 ```
 DevOps_Assignment/
-├── Jenkinsfile                    # Jenkins pipeline definition (8 stages)
-├── Dockerfile                     # Multi-stage Docker build
-├── docker-compose.jenkins.yml     # Jenkins server Docker Compose
-├── docker-compose.yml             # App Docker Compose
-├── jenkins/
-│   ├── plugins.txt                # Auto-installed Jenkins plugins
-│   └── init.groovy.d/
-│       ├── 01-security.groovy     # Admin user + security setup
-│       └── 02-create-pipeline-job.groovy  # Auto-creates pipeline job
+├── .github/workflows/
+│   ├── main.yml              # Primary CI/CD pipeline
+│   └── test.yml              # Multi-version test matrix
 ├── flask_app/
-│   ├── app.py
-│   ├── config.py
+│   ├── app.py                # Flask application factory
+│   ├── config.py             # Configuration (env vars, DB URL)
+│   ├── models/               # SQLAlchemy models (Member, Workout, etc.)
+│   ├── routes/               # Blueprint route handlers
+│   ├── services/             # Business logic layer
+│   ├── utils/                # Validation and calculation helpers
+│   ├── tests/                # Pytest test suite
+│   │   ├── conftest.py       # Shared fixtures
+│   │   ├── test_routes.py    # API endpoint tests
+│   │   ├── test_services.py  # Service layer tests
+│   │   ├── test_models.py    # ORM model tests
+│   │   └── test_utils.py     # Utility function tests
 │   ├── requirements.txt
-│   └── tests/
-│       ├── test_models.py
-│       ├── test_routes.py
-│       ├── test_services.py
-│       └── test_utils.py
-└── .github/
-    └── workflows/
-        └── main.yml               # GitHub Actions CI/CD (parallel pipeline)
+│   └── pytest.ini
+├── ui_app/
+│   ├── aceest_ui.py          # Tkinter desktop application
+│   ├── requirements.txt
+│   └── Dockerfile            # VNC-based UI container
+├── jenkins/                  # Jenkins plugins and init scripts
+├── Dockerfile                # Multi-stage Flask API image
+├── docker-compose.yml        # Full stack orchestration
+├── docker-compose.jenkins.yml
+├── Jenkinsfile               # Windows Jenkins pipeline
+├── nginx.conf                # Reverse proxy configuration
+└── azure-pipelines.yml       # Azure DevOps alternative pipeline
 ```
-
----
-
-### Stopping Jenkins
-
-```bash
-docker-compose -f docker-compose.jenkins.yml down
-
-# To also remove all data (full reset):
-docker-compose -f docker-compose.jenkins.yml down -v
-```
- APP running : http://localhost:6080/vnc.html
-
- 
-Field	Value
-Username	(leave blank — VNC only needs a password)
-Password	password
-
-
-Field	Value
-Username	admin
-Password	admin
