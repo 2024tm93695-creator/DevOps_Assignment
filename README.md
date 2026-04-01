@@ -126,6 +126,9 @@ To start only the Jenkins stack:
 docker-compose -f docker-compose.jenkins.yml up --build
 ```
 
+UI App (Tkinter via VNC)	http://localhost:6080/vnc.html
+Flask API	http://localhost:5000
+Jenkins	http://localhost:8081
 ---
 
 ## Running Tests Manually
